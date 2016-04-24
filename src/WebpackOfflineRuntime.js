@@ -110,7 +110,7 @@ function makeConfig() {
 
 	const output = config.output = config.output || {};
 	output.library = '[name]';
-	output.libraryTarget = 'commonjs2';
+	output.libraryTarget = 'commonjs';
 	output.filename = '[name].js';
 	output.path = outputPath;
 
