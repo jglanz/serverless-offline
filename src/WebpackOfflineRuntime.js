@@ -4,11 +4,19 @@ const MemoryFileSystem = require("memory-fs");
 const webpack = require('webpack');
 const fs = require('fs');
 const path = require('path');
-const process = require('process');
+// const process = require('process');
 const mkdirp = require('mkdirp');
 const Promise = require('bluebird');
+const _ = require('lodash');
+const requireFromString = require('require-from-string');
 
-let resolver = null,
+const defaultOptions = {
+	useMemoryFs: true,
+	configPath: 'webpack.config.js'
+};
+
+let options = null,
+	resolver = null,
 	log = null,
 	config = null,
 	memoryFileSystem = null,
@@ -23,6 +31,18 @@ let state = false;
 
 // in lazy mode, rebuild automatically
 let forceRebuild = false;
+
+
+function getOutputFileSystem() {
+	if (options.useMemoryFs) {
+		if (!memoryFileSystem) {
+			memoryFileSystem = new MemoryFileSystem();
+		}
+
+		return memoryFileSystem;
+	} else
+		return require('fs');
+}
 
 // wait for bundle valid
 function resolveWhenReady(fn) {
@@ -45,17 +65,24 @@ function resolveWhenReady(fn) {
 function makeWebpackCallback(watching) {
 	return function compileComplete(err,stats) {
 		if (err) {
-			log('webpack: (watching=' + watching + ') Compilation failed', err)
+			log(`webpack: (watching=${watching}) Compilation failed: ${stats.toString(config.stats)}`, err);
 		} else {
-			log('webpack: (watching=' + watching + ') Compilation succeeded')
+			log(`webpack: (watching=${watching}) Compilation succeeded`);
 		}
 	}
 }
 
-
-// Load make config
+/**
+ * Create a the configuration object
+ */
 function makeConfig() {
-	let configPath = path.resolve(project.custom.webpack.configPath);
+	if (config)
+		throw new Exception('Config can only be created once');
+
+	options = project.custom.webpack || {}
+	_.defaultsDeep(options,defaultOptions);
+
+	let configPath = path.resolve(options.configPath);
 	if (!fs.existsSync(configPath)) {
 		throw new Error(`Unable to location webpack config path ${configPath}`);
 	}
@@ -73,7 +100,7 @@ function makeConfig() {
 
 	const output = config.output = config.output || {};
 	output.library = '[name]';
-	output.libraryTarget = 'umd';
+	output.libraryTarget = 'commonjs2';
 	output.filename = '[name].js';
 	output.path = outputPath;
 
@@ -85,6 +112,7 @@ function makeConfig() {
 
 		// Runtime checks
 		// No python or Java :'(
+
 		if (fun.runtime !== 'webpack') {
 			log(`${fun.name} is not a webpack function`);
 			return
@@ -92,10 +120,10 @@ function makeConfig() {
 
 
 		const handlerParts = fun.handler.split('/').pop().split('.');
-		const handlerPath = fun.getRootPath(handlerParts[0]);
+		const handlerPath = require.resolve(fun.getRootPath(handlerParts[0]));
 
 		log(`Adding entry ${fun.name} with path ${handlerPath}`);
-		entries[fun.name] = [handlerPath];
+		entries[fun.name] = handlerPath;
 	});
 
 	log(`Final entry list ${Object.keys(config.entry).join(', ')}`);
@@ -112,15 +140,18 @@ function invalidAsyncPlugin(_compiler, callback) {
 	callback();
 }
 
-// Load the config
+
+/**
+ * Create the webpack compiler
+ */
 function makeCompiler() {
 	if (!config) {
 		makeConfig();
 	}
 
-
 	compiler = webpack(config);
-	//memoryFileSystem = compiler.outputFileSystem = new MemoryFileSystem();
+	if (options.useMemoryFs)
+		memoryFileSystem = compiler.outputFileSystem = new MemoryFileSystem();
 
 	log('Initial run');
 	compiler.run(makeWebpackCallback(false));
@@ -192,23 +223,35 @@ function rebuild() {
 	}
 }
 
-const makeResolver = () => {
+function makeResolver() {
 	log('Making resolver');
+
 	resolver = {
 		resolveWhenReady,
 		resolve(funName) {
 			return new Promise((resolve,reject) => {
 				const outputFile = path.resolve(outputPath,`${funName}.js`);
+				const srcFile = config.entry[funName];
 				log(`webpack: resolving ${funName} with ${outputFile}`);
 
-				const doResolve = () => {
+				function doResolve() {
 					if (!state) {
 						return reject(new Error('resolve called on state not ready'));
 					}
+
 					log(`webpack: resolving now - ready! - ${outputFile}`);
-					const loadedModule = require(outputFile);
-					log(`loaded module: ${typeof loadedModule} - ${Object.keys(loadedModule)}`);
-					return resolve(loadedModule);
+
+
+					getOutputFileSystem().readFile(outputFile, (err,data) => {
+						if (err) {
+							console.error(`Failed to load output content for ${outputFile}`,err.stack);
+							return reject(err);
+						}
+
+						const loadedModule = requireFromString(data.toString(),srcFile);
+						// const loadedModule = requireFromString(data.toString(),outputFile);
+						return resolve(loadedModule);
+					});
 				}
 
 				try {
