@@ -39,7 +39,7 @@ module.exports = {
         ],
         "eol-last": "error",
         "eqeqeq": "error",
-        "func-names": "error",
+        "func-names": "off",
         "func-style": [
             "error",
             "declaration",
@@ -114,10 +114,10 @@ module.exports = {
         ],
         "space-infix-ops": "error",
         "space-unary-ops": "error",
-        "spaced-comment": [
-            "error",
-            "always"
-        ],
+        // "spaced-comment": [
+        //     "error",
+        //     "always"
+        // ],
         "strict": "off",
         "template-curly-spacing": [
             "error",

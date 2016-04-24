@@ -13,6 +13,7 @@ module.exports = S => {
   const path = require('path');
 
   // External dependencies
+  const _ = require('lodash');
   const Hapi = require('hapi');
   const isPlainObject = require('lodash.isplainobject');
   const serverlessLog = S.config && S.config.serverlessPath ?
@@ -104,6 +105,7 @@ module.exports = S => {
      */
     getWebpackRuntime() {
       if (!this.webpackResolver) {
+        serverlessLog('Initializing webpack/offline');
         this.webpackResolver = require('./WebpackOfflineRuntime')(S,this.project);
 
       }
@@ -232,13 +234,14 @@ module.exports = S => {
         // Runtime checks
         // No python or Java :'(
         const funRuntime = fun.runtime;
-        if (['webpack','nodejs', 'nodejs4.3', 'babel'].indexOf(funRuntime) === -1) {
+        if (['nodejs', 'nodejs4.3', 'babel'].indexOf(funRuntime) === -1) {
           console.log();
           serverlessLog(`Warning: found unsupported runtime '${funRuntime}' for function '${fun.name}'`);
           return;
         }
 
-        if (funRuntime === 'webpack') {
+        // Check for webpack
+        if (/node/.test(funRuntime) && _.get(this.project,'custom.webpack')) {
           this.getWebpackRuntime();
         }
 

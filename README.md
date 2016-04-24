@@ -31,7 +31,7 @@ In your project root run:
 
 `sls offline start`
 
-All CLI options are optionnal:
+All CLI options are optional:
 
 ```
 --prefix                -p  Adds a prefix to every path, to send your requests to http://localhost:3000/prefix/[your_path] instead. E.g. -p dev
@@ -52,6 +52,37 @@ Just send your requests to `http://localhost:3000/` as it would be API Gateway. 
 But if you send a `application/x-www-form-urlencoded` or a `multipart/form-data` body with a `application/json` (or no) Content-Type, API Gateway won't parse your data (you'll get the ugly raw as input) whereas the plugin will answer 400 (malformed JSON).
 Please consider explicitly setting your requests' Content-Type and using separates templates.
 
+### Usage with Webpack
+
+A built-in webpack dev-server is fully integrated.  Simply configure it the same way you would serverless-webpack-plugin, the only caveat - it MUST be in s-project NOT in s-function to work.
+ 
+ ```javascript
+ {
+     ...
+     "custom": {
+         "webpack": {
+             "configPath": "path/relative/to/project-path"
+         }
+     }
+     ...
+ }
+
+// -------OR-------
+
+{
+    ...
+    "custom": {
+        "webpack": {
+            "config": {
+                ... your config here ...
+            }
+        }
+    }
+    ...
+}
+
+ 
+ ```
 
 ### Usage with Babel
 

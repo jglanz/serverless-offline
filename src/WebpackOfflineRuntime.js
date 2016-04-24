@@ -4,15 +4,21 @@ const MemoryFileSystem = require("memory-fs");
 const webpack = require('webpack');
 const fs = require('fs');
 const path = require('path');
-// const process = require('process');
 const mkdirp = require('mkdirp');
 const Promise = require('bluebird');
 const _ = require('lodash');
 const requireFromString = require('require-from-string');
 
+
+/**
+ * Default options
+ *
+ * @type {{useMemoryFs: boolean, config: Object, configPath: string}}
+ */
 const defaultOptions = {
 	useMemoryFs: true,
-	configPath: 'webpack.config.js'
+	configPath: 'webpack.config.js',
+	config: null
 };
 
 let options = null,
@@ -82,15 +88,19 @@ function makeConfig() {
 	options = project.custom.webpack || {}
 	_.defaultsDeep(options,defaultOptions);
 
-	let configPath = path.resolve(options.configPath);
-	if (!fs.existsSync(configPath)) {
-		throw new Error(`Unable to location webpack config path ${configPath}`);
+	if (options.config) {
+		config = options.config;
+	} else {
+		let configPath = path.resolve(options.configPath);
+		if (!fs.existsSync(configPath)) {
+			throw new Error(`Unable to location webpack config path ${configPath}`);
+		}
+
+		log(`Making compiler with config path ${configPath}`);
+		config = require(configPath);
 	}
 
-	log(`Making compiler with config path ${configPath}`);
 
-
-	config = require(configPath);
 	config.target = 'node';
 
 	// Output config
@@ -153,9 +163,9 @@ function makeCompiler() {
 	if (options.useMemoryFs)
 		memoryFileSystem = compiler.outputFileSystem = new MemoryFileSystem();
 
-	log('Initial run');
+	log('webpack: First compilation');
 	compiler.run(makeWebpackCallback(false));
-	log('Starting watch');
+	log('webpack: Watching');
 	compiler.watch({},makeWebpackCallback(true));
 
 
