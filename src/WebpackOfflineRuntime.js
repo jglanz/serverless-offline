@@ -98,6 +98,9 @@ function makeConfig() {
 
 		log(`Making compiler with config path ${configPath}`);
 		config = require(configPath);
+
+		if (_.isFunction(config))
+			config = config()
 	}
 
 
@@ -110,7 +113,7 @@ function makeConfig() {
 
 	const output = config.output = config.output || {};
 	output.library = '[name]';
-	output.libraryTarget = 'commonjs';
+	output.libraryTarget = 'commonjs2';
 	output.filename = '[name].js';
 	output.path = outputPath;
 
@@ -123,14 +126,27 @@ function makeConfig() {
 		// Runtime checks
 		// No python or Java :'(
 
-		if (fun.runtime !== 'webpack') {
+		if (!/node/.test(fun.runtime)) {
 			log(`${fun.name} is not a webpack function`);
 			return
 		}
 
 
 		const handlerParts = fun.handler.split('/').pop().split('.');
-		const handlerPath = require.resolve(fun.getRootPath(handlerParts[0]));
+		let modulePath = fun.getRootPath(handlerParts[0]), baseModulePath = modulePath;
+		if (!fs.existsSync(modulePath)) {
+			for (let ext of config.resolve.extensions) {
+				modulePath = `${baseModulePath}${ext}`;
+				log(`Checking: ${modulePath}`);
+				if (fs.existsSync(modulePath))
+					break;
+			}
+		}
+
+		if (!fs.existsSync(modulePath))
+			throw new Error(`Failed to resolve entry with base path ${baseModulePath}`);
+
+		const handlerPath = require.resolve(modulePath);
 
 		log(`Adding entry ${fun.name} with path ${handlerPath}`);
 		entries[fun.name] = handlerPath;
@@ -258,7 +274,8 @@ function makeResolver() {
 							return reject(err);
 						}
 
-						const loadedModule = requireFromString(data.toString(),srcFile);
+						const moduleCode = data.toString('utf-8')
+						const loadedModule = requireFromString(moduleCode,srcFile);
 						// const loadedModule = requireFromString(data.toString(),outputFile);
 						return resolve(loadedModule);
 					});

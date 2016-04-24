@@ -241,7 +241,8 @@ module.exports = S => {
         }
 
         // Check for webpack
-        if (/node/.test(funRuntime) && _.get(this.project,'custom.webpack')) {
+        const useWebpack = /node/.test(funRuntime) && _.get(this.project,'custom.webpack');
+        if (useWebpack) {
           this.getWebpackRuntime();
         }
 
@@ -333,7 +334,7 @@ module.exports = S => {
               /* HANDLER LAZY LOADING */
 
               const getHandler = () => {
-                if (funRuntime === 'webpack') {
+                if (useWebpack) {
                   return this.webpackResolver.resolve(funName).then(handler => {
                     return handler[handlerParts[1]]
                   })
