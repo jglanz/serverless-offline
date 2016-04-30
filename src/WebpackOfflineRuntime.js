@@ -7,8 +7,7 @@ const path = require('path');
 const mkdirp = require('mkdirp');
 const Promise = require('bluebird');
 const _ = require('lodash');
-const requireFromString = require('require-from-string');
-
+const requireFromString = require('./RequireFromString');
 
 /**
  * Default options
@@ -21,9 +20,14 @@ const defaultOptions = {
 	config: null
 };
 
+const
+	CommonJS = 'commonjs',
+	CommonJS2 = 'commonjs2';
+
 let options = null,
 	resolver = null,
 	log = null,
+	libraryTarget = CommonJS,
 	config = null,
 	memoryFileSystem = null,
 	outputPath = null,
@@ -39,18 +43,29 @@ let state = false;
 let forceRebuild = false;
 
 
+/**
+ * Get the output filesystem where webpack should write to
+ *
+ * @returns {*}
+ */
 function getOutputFileSystem() {
 	if (options.useMemoryFs) {
 		if (!memoryFileSystem) {
 			memoryFileSystem = new MemoryFileSystem();
 		}
-
 		return memoryFileSystem;
 	} else
-		return require('fs');
+		return fs;
 }
 
-// wait for bundle valid
+/**
+ * Proxy to resolve that will hold
+ * all callbacks until the compilation state
+ * is ready
+ *
+ * @param fn
+ * @returns {*}
+ */
 function resolveWhenReady(fn) {
 	if(state)
 		return fn();
@@ -83,7 +98,7 @@ function makeWebpackCallback(watching) {
  */
 function makeConfig() {
 	if (config)
-		throw new Exception('Config can only be created once');
+		throw new Error('Config can only be created once');
 
 	options = project.custom.webpack || {}
 	_.defaultsDeep(options,defaultOptions);
@@ -113,7 +128,16 @@ function makeConfig() {
 
 	const output = config.output = config.output || {};
 	output.library = '[name]';
-	output.libraryTarget = 'commonjs2';
+
+	// Ensure we have a valid output target
+	if (!_.includes([CommonJS,CommonJS2],output.libraryTarget)) {
+		console.warn('Webpack config library target is not in',[CommonJS,CommonJS2].join(','))
+		output.libraryTarget = CommonJS2
+	}
+
+	// Ref the target
+	libraryTarget = output.libraryTarget
+
 	output.filename = '[name].js';
 	output.path = outputPath;
 
@@ -161,7 +185,17 @@ function invalidPlugin() {
 	// We are now in invalid state
 	state = false;
 }
-function invalidAsyncPlugin(_compiler, callback) {
+
+//noinspection JSUnusedLocalSymbols
+/**
+ * Callback when package is invalidated
+ *
+ * @param compiler
+ * @param callback
+ */
+function invalidAsyncPlugin(compiler, callback) {
+	state = false
+
 	invalidPlugin();
 	callback();
 }
@@ -177,7 +211,7 @@ function makeCompiler() {
 
 	compiler = webpack(config);
 	if (options.useMemoryFs)
-		memoryFileSystem = compiler.outputFileSystem = new MemoryFileSystem();
+		memoryFileSystem = compiler.outputFileSystem = getOutputFileSystem();
 
 	log('webpack: First compilation');
 	compiler.run(makeWebpackCallback(false));
@@ -209,16 +243,14 @@ function makeCompiler() {
 			log(`webpack compiled ${stats.toString(config.stats || {})}`)
 
 			// print webpack output
-			// var displayStats = (!options.quiet && options.stats !== false);
-			// if(displayStats &&
-			// 	!(stats.hasErrors() || stats.hasWarnings()) &&
-			// 	options.noInfo)
-			// 	displayStats = false;
-			// if(displayStats) {
-			// 	console.log(stats.toString(options.stats));
-			// }
+			let displayStats = (!options.quiet && config.stats !== false) ||
+				stats.hasErrors() || stats.hasWarnings()
+
+			if(displayStats)
+				log(stats.toString(options.stats));
+
 			// if (!options.noInfo && !options.quiet)
-			console.info("webpack: bundle is now VALID.");
+			log("webpack: bundle is now VALID.");
 
 			// execute callback that are delayed
 			var cbs = compilationCallbacks;
@@ -249,45 +281,69 @@ function rebuild() {
 	}
 }
 
+/**
+ * Create a resolve handler
+ *
+ * @param funName
+ * @returns {function()}
+ */
+function resolveHandler(funName) {
+	return (resolve,reject) => {
+		const outputFile = path.resolve(outputPath, `${funName}.js`);
+		const srcFile = config.entry[funName];
+		log(`webpack: resolving ${funName} with ${outputFile}`);
+
+		function doResolve() {
+			if (!state) {
+				return reject(new Error('resolve called on state not ready'));
+			}
+
+			log(`webpack: resolving now - ready! - ${outputFile}`);
+
+
+			getOutputFileSystem().readFile(outputFile, (err, data) => {
+				if (err) {
+					console.error(`Failed to load output content for ${outputFile}`, err.stack);
+					return reject(err);
+				}
+
+				try {
+					const moduleCode = data.toString('utf-8');
+					let loadedModule = requireFromString(moduleCode, srcFile);
+					if (libraryTarget === CommonJS) {
+						const keys = Object.keys(loadedModule);
+						log(`CommonJS module: loading ${funName} from module with keys ${keys}`);
+						loadedModule = loadedModule[funName];
+					}
+					return resolve(loadedModule);
+				} catch (e) {
+					console.error(`Failed to compile/load webpack output: ${outputFile}`, e.stack, e);
+					return reject(e);
+				}
+			});
+		}
+
+		try {
+			resolveWhenReady(doResolve);
+		} catch (err) {
+			console.error('webpack failed to resolve' + funName, err.stack);
+			reject(err)
+		}
+	}
+}
+
+/**
+ * Create resolver
+ *
+ * @returns {*}
+ */
 function makeResolver() {
 	log('Making resolver');
 
 	resolver = {
 		resolveWhenReady,
 		resolve(funName) {
-			return new Promise((resolve,reject) => {
-				const outputFile = path.resolve(outputPath,`${funName}.js`);
-				const srcFile = config.entry[funName];
-				log(`webpack: resolving ${funName} with ${outputFile}`);
-
-				function doResolve() {
-					if (!state) {
-						return reject(new Error('resolve called on state not ready'));
-					}
-
-					log(`webpack: resolving now - ready! - ${outputFile}`);
-
-
-					getOutputFileSystem().readFile(outputFile, (err,data) => {
-						if (err) {
-							console.error(`Failed to load output content for ${outputFile}`,err.stack);
-							return reject(err);
-						}
-
-						const moduleCode = data.toString('utf-8')
-						const loadedModule = requireFromString(moduleCode,srcFile);
-						// const loadedModule = requireFromString(data.toString(),outputFile);
-						return resolve(loadedModule);
-					});
-				}
-
-				try {
-					resolveWhenReady(doResolve);
-				} catch (err) {
-					console.error('webpack failed to resolve' + funName,err.stack);
-					reject(err)
-				}
-			});
+			return new Promise(resolveHandler(funName));
 		}
 	};
 

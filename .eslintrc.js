@@ -76,10 +76,7 @@ module.exports = {
         "newline-per-chained-call": "off",
         "no-alert": "error",
         "no-with": "error",
-        "object-curly-spacing": [
-            "error",
-            "always"
-        ],
+        "object-curly-spacing": "off",
         "object-shorthand": "error",
         "one-var": "off",
         "one-var-declaration-per-line": "off",
