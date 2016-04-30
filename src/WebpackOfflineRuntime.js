@@ -310,6 +310,7 @@ function resolveHandler(funName) {
 				try {
 					const moduleCode = data.toString('utf-8');
 					let loadedModule = requireFromString(moduleCode, srcFile);
+					//let loadedModule = requireFromString(moduleCode, outputFile);
 					if (libraryTarget === CommonJS) {
 						const keys = Object.keys(loadedModule);
 						log(`CommonJS module: loading ${funName} from module with keys ${keys}`);

@@ -37,15 +37,16 @@ module.exports = function requireFromString(code, filename, opts) {
 	m.filename = filename;
 	m.paths = [].concat(opts.prependPaths).concat(paths).concat(opts.appendPaths);
 
-	const locals = {
-		module:m,
-		exports:m.exports,
-		__dirname:__dirname,
-		__filename:__filename,
-		console,
-		process,
-		require
-	};
-	vm.runInNewContext(code,locals);
+	// const locals = {
+	// 	module:m,
+	// 	exports:m.exports,
+	// 	__dirname:__dirname,
+	// 	__filename:__filename,
+	// 	console,
+	// 	process,
+	// 	require
+	// };
+	// vm.runInNewContext(code,locals);
+	m._compile(code,filename)
 	return m.exports;
 };
