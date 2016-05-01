@@ -8,7 +8,7 @@ const mkdirp = require('mkdirp');
 const Promise = require('bluebird');
 const _ = require('lodash');
 const requireFromString = require('./RequireFromString');
-
+//const requireFromString = require('require-from-string')
 /**
  * Default options
  *
@@ -309,8 +309,9 @@ function resolveHandler(funName) {
 
 				try {
 					const moduleCode = data.toString('utf-8');
-					let loadedModule = requireFromString(moduleCode, srcFile);
-					//let loadedModule = requireFromString(moduleCode, outputFile);
+					//const moduleCode = data.toString();
+					//let loadedModule = requireFromString(moduleCode, srcFile);
+					let loadedModule = requireFromString(moduleCode, outputFile);
 					if (libraryTarget === CommonJS) {
 						const keys = Object.keys(loadedModule);
 						log(`CommonJS module: loading ${funName} from module with keys ${keys}`);
